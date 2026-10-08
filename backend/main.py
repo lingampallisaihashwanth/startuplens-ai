@@ -328,18 +328,22 @@ async def analyze_topic(request: AnalyzeRequest):
         )
 
     # Resolve model via the new multi-provider router
-    try:
-        resolved_model_id = llm_router.resolve_model_id(request.model)
-    except ValueError as ve:
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={
-                "error": {
-                    "code": "INVALID_MODEL",
-                    "message": str(ve),
-                }
-            },
-        )
+    raw_model = (request.model or "auto").strip().lower()
+    if raw_model == "auto":
+        resolved_model_id = "auto"
+    else:
+        try:
+            resolved_model_id = llm_router.resolve_model_id(request.model)
+        except ValueError as ve:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": {
+                        "code": "INVALID_MODEL",
+                        "message": str(ve),
+                    }
+                },
+            )
 
     session_id = f"session_{uuid.uuid4().hex[:12]}"
     logger.info(
@@ -361,6 +365,16 @@ async def analyze_topic(request: AnalyzeRequest):
             model_id=resolved_model_id,
         )
 
+        last_exec = (
+            getattr(opportunity_agent, "last_execution", None)
+            or getattr(research_agent, "last_execution", None)
+            or {}
+        )
+        provider_used = last_exec.get("provider")
+        fallback_used = bool(last_exec.get("fallback_used", False))
+        fallback_reason = last_exec.get("fallback_reason")
+        effective_model = last_exec.get("model") or resolved_model_id
+
         # Step 3: Persist session to SQLite
         try:
             db.save_analysis_session(
@@ -370,7 +384,7 @@ async def analyze_topic(request: AnalyzeRequest):
                 analysis=analysis_result,
                 opportunities=opportunities,
                 sources=research_result.sources,
-                model_used=resolved_model_id,
+                model_used=effective_model,
             )
         except Exception as db_err:
             logger.error(f"Database persistence failed for session [{session_id}]: {db_err}", exc_info=True)
@@ -388,16 +402,6 @@ async def analyze_topic(request: AnalyzeRequest):
         disclaimer = f"Based on web sources retrieved on {retrieved_at}."
         if request.document_ids:
             disclaimer += f" Includes {len(request.document_ids)} attached research document(s)."
-
-        last_exec = (
-            getattr(opportunity_agent, "last_execution", None)
-            or getattr(research_agent, "last_execution", None)
-            or {}
-        )
-        provider_used = last_exec.get("provider")
-        fallback_used = bool(last_exec.get("fallback_used", False))
-        fallback_reason = last_exec.get("fallback_reason")
-        effective_model = last_exec.get("model") or resolved_model_id
 
         return AnalyzeResponse(
             id=session_id,

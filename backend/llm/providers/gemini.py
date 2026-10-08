@@ -77,7 +77,7 @@ class GeminiProvider(LLMProvider):
         self._api_key = (
             api_key if api_key is not None else (settings.GEMINI_API_KEY or "")
         ).strip()
-        self._model = (model or settings.GEMINI_MODEL or "gemini-2.5-flash").strip()
+        self._model = (model or settings.GEMINI_MODEL or "gemini-3.8-flash").strip()
         self._service = GeminiService(api_key=self._api_key, model=self._model)
 
     @property
@@ -151,9 +151,9 @@ class GeminiProvider(LLMProvider):
             err_str = str(exc)
             if "invalid" in err_str.lower() or "400" in err_str:
                 raise LLMInvalidRequestError(err_str)
-            raise LLMError(err_str)
+            raise LLMServiceUnavailableError(err_str)
         except Exception as exc:
-            raise LLMError(f"Gemini unexpected error: {exc}")
+            raise LLMServiceUnavailableError(f"Gemini unexpected error: {exc}")
 
 
 # Module-level singleton

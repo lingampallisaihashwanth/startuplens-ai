@@ -53,7 +53,10 @@ class MistralProvider(LLMProvider):
 
         if self._api_key:
             try:
-                from mistralai import Mistral  # type: ignore
+                try:
+                    from mistralai import Mistral  # type: ignore
+                except ImportError:
+                    from mistralai.client import Mistral  # type: ignore
                 self._client = Mistral(api_key=self._api_key)
             except Exception as exc:
                 logger.error(f"MistralProvider: failed to initialise client: {exc}")

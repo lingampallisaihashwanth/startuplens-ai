@@ -165,31 +165,48 @@ class ModelRouter:
             f"ModelRouter: routing [{request.request_id}] → model_id={resolved_id}"
         )
 
+        is_auto = (model_id is None or str(model_id).strip().lower() == "auto")
+
         # Primary attempt
         primary_provider = _get_provider_for_model_id(resolved_id)
         if primary_provider is None:
-            raise LLMError(
-                f"No provider adapter found for model '{resolved_id}'."
-            )
-        if not primary_provider.is_configured():
-            raise LLMAuthError(
-                f"Provider for '{resolved_id}' is not configured. "
-                f"Please set the required API key."
-            )
-
-        primary_error: Optional[Exception] = None
-        try:
-            response = primary_provider.generate_json(request)
-            return response
-        except _HARD_ERRORS:
-            raise
-        except _FALLBACK_ERRORS as exc:
-            primary_error = exc
-            logger.warning(
-                f"ModelRouter: primary provider '{resolved_id}' failed with "
-                f"{type(exc).__name__}: {exc}. "
-                f"Fallback enabled: {self._fallback_enabled}"
-            )
+            if is_auto or self._fallback_enabled:
+                primary_error = LLMError(f"No provider adapter found for model '{resolved_id}'.")
+            else:
+                raise LLMError(f"No provider adapter found for model '{resolved_id}'.")
+        elif not primary_provider.is_configured():
+            if is_auto or self._fallback_enabled:
+                primary_error = LLMServiceUnavailableError(
+                    f"Provider for '{resolved_id}' is not configured."
+                )
+                logger.warning(
+                    f"ModelRouter: primary provider '{resolved_id}' is not configured. Falling back."
+                )
+            else:
+                raise LLMAuthError(
+                    f"Provider for '{resolved_id}' is not configured. "
+                    f"Please set the required API key."
+                )
+        else:
+            primary_error = None
+            try:
+                response = primary_provider.generate_json(request)
+                return response
+            except _HARD_ERRORS as exc:
+                if not is_auto:
+                    raise
+                primary_error = exc
+                logger.warning(
+                    f"ModelRouter: primary provider '{resolved_id}' failed with "
+                    f"{type(exc).__name__}: {exc} in auto mode. Proceeding to fallback."
+                )
+            except Exception as exc:
+                primary_error = exc
+                logger.warning(
+                    f"ModelRouter: primary provider '{resolved_id}' failed with "
+                    f"{type(exc).__name__}: {exc}. "
+                    f"Fallback enabled: {self._fallback_enabled}"
+                )
 
         # Fallback chain
         if not self._fallback_enabled or primary_error is None:
@@ -213,8 +230,9 @@ class ModelRouter:
                 response = fallback_provider.generate_json(request)
                 # Annotate response with fallback info
                 response.fallback_used = True
+                prov_name = primary_provider.provider_name if primary_provider else resolved_id
                 response.fallback_reason = (
-                    f"{primary_provider.provider_name} unavailable "
+                    f"{prov_name} unavailable "
                     f"({type(primary_error).__name__})"
                 )
                 logger.info(
@@ -222,8 +240,6 @@ class ModelRouter:
                     f"[{request.request_id}]"
                 )
                 return response
-            except _HARD_ERRORS:
-                raise
             except Exception as fb_exc:
                 logger.warning(
                     f"ModelRouter: fallback '{fallback_id}' also failed: {fb_exc}"

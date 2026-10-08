@@ -7,14 +7,14 @@ logger = logging.getLogger(__name__)
 # Configurable Model Profiles
 # Only Gemini models are supported as required.
 # Reads current environment GEMINI_MODEL as primary default.
-DEFAULT_ACTIVE_MODEL = settings.GEMINI_MODEL or "gemini-2.5-flash"
+DEFAULT_ACTIVE_MODEL = settings.GEMINI_MODEL or "gemini-3.8-flash"
 
 MODEL_PROFILES: Dict[str, Dict[str, str]] = {
     "FAST": {
         "id": "FAST",
-        "name": "Gemini 2.5 Flash (Fast)",
+        "name": "Gemini Flash (Fast)",
         "description": "High-speed responses with low latency for rapid iterations.",
-        "model_name": "gemini-2.5-flash",
+        "model_name": "gemini-3.8-flash",
     },
     "BALANCED": {
         "id": "BALANCED",

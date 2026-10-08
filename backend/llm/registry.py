@@ -94,7 +94,7 @@ def _build_registry() -> Dict[str, Dict[str, Any]]:
 
         # Resolve model_name from settings
         if model_id == "gemini-balanced":
-            entry["model_name"] = settings.GEMINI_MODEL or "gemini-2.5-flash"
+            entry["model_name"] = settings.GEMINI_MODEL or "gemini-3.8-flash"
         elif model_id == "groq-fast":
             entry["model_name"] = settings.GROQ_MODEL_FAST or "openai/gpt-oss-20b"
         elif model_id == "groq-reasoning":
