@@ -1,0 +1,440 @@
+@import "tailwindcss";
+
+:root,
+[data-theme="dark"] {
+  /* StartupLens AI Console Tokens — Deep Charcoal Command Center */
+  --background: #0e0f12;
+  --foreground: #f4f3ee;
+  --muted: #8b8982;
+  --accent: #5e9ef0;
+  --accent-hover: #7bb2f5;
+  --accent-subtle: rgba(94, 158, 240, 0.12);
+  --border: #22242c;
+  --border-subtle: #181920;
+  --surface: #15161c;
+  --surface-raised: #1c1d25;
+  --surface-hover: #23252f;
+  --surface-active: #2b2d3a;
+  --focus: #5e9ef0;
+  --text-secondary: #c5c4bc;
+  --text-pure: #ffffff;
+  --scrollbar-thumb: #282a34;
+  --scrollbar-thumb-hover: #383a48;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  /* StartupLens AI Console Tokens — Warm Off-White Editorial */
+  --background: #fbfbf9;
+  --foreground: #181715;
+  --muted: #76746d;
+  --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-subtle: rgba(37, 99, 235, 0.08);
+  --border: #e3e1da;
+  --border-subtle: #eeece5;
+  --surface: #ffffff;
+  --surface-raised: #f5f4ef;
+  --surface-hover: #eeede6;
+  --surface-active: #e2e0d7;
+  --focus: #2563eb;
+  --text-secondary: #585650;
+  --text-pure: #111110;
+  --scrollbar-thumb: #d3d1ca;
+  --scrollbar-thumb-hover: #b8b6af;
+  --success: #059669;
+  --warning: #d97706;
+  --danger: #dc2626;
+  color-scheme: light;
+}
+
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-border: var(--border);
+  --color-border-subtle: var(--border-subtle);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-active: var(--surface-active);
+  --color-focus: var(--focus);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-pure: var(--text-pure);
+}
+
+/* Global resets & typography */
+html {
+  height: 100%;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Accessible focus-visible styling (WCAG 2.2 AA) */
+*:focus {
+  outline: none;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  transition: outline 0.1s ease;
+}
+
+/* Ensure the inner composer textarea has no inner rectangular focus outline */
+#composer-input,
+#composer-input:focus,
+#composer-input:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* Selection */
+::selection {
+  background: var(--accent-subtle);
+  color: var(--foreground);
+}
+
+/* Research card — subtle hover state for editorial feel */
+.research-card {
+  transition: border-color var(--motion-duration-std) var(--motion-ease-out),
+              background-color var(--motion-duration-std) var(--motion-ease-out),
+              box-shadow var(--motion-duration-std) var(--motion-ease-out);
+}
+
+.research-card:hover {
+  border-color: color-mix(in srgb, var(--border) 100%, var(--foreground) 12%);
+  background-color: color-mix(in srgb, var(--surface) 96%, var(--foreground) 4%);
+}
+
+/* ==========================================================================
+   StartupLens AI — Polish Motion & Interaction Design System
+   Principles: Fast, Subtle, Smooth, Context-aware, Consistent, Accessible
+   ========================================================================== */
+
+:root {
+  /* Motion timing tokens */
+  --motion-duration-micro: 140ms;
+  --motion-duration-std: 200ms;
+  --motion-duration-panel: 280ms;
+  --motion-duration-entrance: 340ms;
+
+  /* Motion easing curves */
+  --motion-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --motion-ease-in: cubic-bezier(0.4, 0, 1, 1);
+}
+
+/* Keyframe animations */
+@keyframes motionFadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motionFadeSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes motionFadeSlideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes motionPulseSubtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@keyframes motionIconPop {
+  0% {
+    transform: scale(0.9);
+  }
+  55% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes motionModalEnter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes intelligenceScanline {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes networkFlow {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -120;
+  }
+}
+
+@keyframes networkFlowReverse {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: 120;
+  }
+}
+
+@keyframes networkPulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.25;
+  }
+  50% {
+    transform: scale(1.6);
+    opacity: 0.65;
+  }
+}
+
+@keyframes landingEntry {
+  from {
+    opacity: 0;
+    transform: translateY(var(--entry-y, 8px));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-landing-logo {
+  --entry-y: 6px;
+  animation: landingEntry 280ms var(--motion-ease-out) 0ms both;
+}
+
+.animate-landing-eyebrow {
+  --entry-y: 8px;
+  animation: landingEntry 300ms var(--motion-ease-out) 40ms both;
+}
+
+.animate-landing-headline {
+  --entry-y: 10px;
+  animation: landingEntry 320ms var(--motion-ease-out) 80ms both;
+}
+
+.animate-landing-subtitle {
+  --entry-y: 8px;
+  animation: landingEntry 300ms var(--motion-ease-out) 120ms both;
+}
+
+.animate-landing-pills {
+  --entry-y: 6px;
+  animation: landingEntry 300ms var(--motion-ease-out) 160ms both;
+}
+
+.animate-landing-composer {
+  --entry-y: 10px;
+  animation: landingEntry 340ms var(--motion-ease-out) 200ms both;
+}
+
+.animate-landing-actions {
+  --entry-y: 8px;
+  animation: landingEntry 320ms var(--motion-ease-out) 240ms both;
+}
+
+/* Console Grid Background & Ambient Lighting */
+.console-grid {
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, var(--border) 40%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 24px 24px;
+}
+
+.console-radar-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%);
+  animation: intelligenceScanline 8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* Smooth Score Fill Transition */
+.score-fill-bar {
+  transition: width 800ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Staggered entrance classes for Research Report */
+.motion-section-1 {
+  animation: motionFadeSlideUp var(--motion-duration-entrance) var(--motion-ease-out) 0ms both;
+}
+
+.motion-section-2 {
+  animation: motionFadeSlideUp var(--motion-duration-entrance) var(--motion-ease-out) 50ms both;
+}
+
+.motion-section-3 {
+  animation: motionFadeSlideUp var(--motion-duration-entrance) var(--motion-ease-out) 100ms both;
+}
+
+.motion-section-4 {
+  animation: motionFadeSlideUp var(--motion-duration-entrance) var(--motion-ease-out) 150ms both;
+}
+
+.motion-section-5 {
+  animation: motionFadeSlideUp var(--motion-duration-entrance) var(--motion-ease-out) 200ms both;
+}
+
+/* Opportunity Card entrance and hover */
+.motion-card-enter {
+  animation: motionFadeSlideUp var(--motion-duration-entrance) var(--motion-ease-out) var(--card-delay, 0ms) both;
+}
+
+.opportunity-card {
+  transition: border-color var(--motion-duration-std) var(--motion-ease-out),
+              background-color var(--motion-duration-std) var(--motion-ease-out),
+              box-shadow var(--motion-duration-std) var(--motion-ease-out);
+}
+
+.opportunity-card:hover {
+  box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.18);
+  border-color: color-mix(in srgb, var(--border) 80%, var(--accent) 20%);
+}
+
+/* Modal and Drawer motion classes */
+.motion-modal-surface {
+  animation: motionModalEnter var(--motion-duration-panel) var(--motion-ease-out) both;
+}
+
+.motion-backdrop {
+  animation: motionFadeSlideDown var(--motion-duration-panel) var(--motion-ease-out) both;
+}
+
+/* Responsive motion adjustments */
+@media (max-width: 768px) {
+  .motion-section-1 { animation-delay: 0ms; }
+  .motion-section-2 { animation-delay: 30ms; }
+  .motion-section-3 { animation-delay: 60ms; }
+  .motion-section-4 { animation-delay: 90ms; }
+  .motion-section-5 { animation-delay: 120ms; }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --motion-duration-entrance: 240ms;
+    --motion-duration-panel: 220ms;
+  }
+  .motion-section-1,
+  .motion-section-2,
+  .motion-section-3,
+  .motion-section-4,
+  .motion-section-5 {
+    animation-delay: 0ms !important;
+  }
+}
+
+/* Accessibility: prefers-reduced-motion: reduce */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .motion-section-1,
+  .motion-section-2,
+  .motion-section-3,
+  .motion-section-4,
+  .motion-section-5,
+  .motion-card-enter,
+  .motion-modal-surface,
+  .animate-landing-logo,
+  .animate-landing-eyebrow,
+  .animate-landing-headline,
+  .animate-landing-subtitle,
+  .animate-landing-pills,
+  .animate-landing-composer,
+  .animate-landing-actions,
+  .console-radar-line {
+    animation: none !important;
+    transform: none !important;
+  }
+}

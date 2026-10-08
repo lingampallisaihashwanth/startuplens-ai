@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: startuplens-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL_FAST
+        value: openai/gpt-oss-20b
+      - key: GROQ_MODEL_REASONING
+        value: openai/gpt-oss-120b
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: MISTRAL_MODEL
+        value: mistral-small-latest
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./startuplens.db
+      - key: DEFAULT_MODEL
+        value: auto
+      - key: FRONTEND_URL
+        sync: false
