@@ -81,6 +81,18 @@ In Render **Environment** tab, configure the following variables (do not commit 
 | `DATABASE_URL` | Optional | `sqlite:///./startuplens.db` (default) |
 | `DEFAULT_MODEL` | Optional | `auto` (default) |
 | `FRONTEND_URL` | Required | `https://<YOUR-APP>.vercel.app` (set after creating Vercel app) |
+| `JWT_SECRET` | Required | Secure random secret for signing JWT sessions (min 32 chars) |
+| `GOOGLE_CLIENT_ID` | Optional | Google OAuth 2.0 Client ID (`*.apps.googleusercontent.com`) |
+| `GOOGLE_CLIENT_SECRET` | Optional | Google OAuth 2.0 Client Secret (Render backend only) |
+| `GOOGLE_REDIRECT_URI` | Optional | `https://<YOUR-RENDER-API>.onrender.com/auth/google/callback` |
+| `GITHUB_CLIENT_ID` | Optional | GitHub OAuth App Client ID |
+| `GITHUB_CLIENT_SECRET` | Optional | GitHub OAuth App Client Secret (Render backend only) |
+| `GITHUB_REDIRECT_URI` | Optional | `https://<YOUR-RENDER-API>.onrender.com/auth/github/callback` |
+| `LINKEDIN_CLIENT_ID` | Optional | LinkedIn Developer App Client ID |
+| `LINKEDIN_CLIENT_SECRET` | Optional | LinkedIn Developer App Client Secret (Render backend only) |
+| `LINKEDIN_REDIRECT_URI` | Optional | `https://<YOUR-RENDER-API>.onrender.com/auth/linkedin/callback` |
+
+> **Security Reminder:** Never place OAuth client secrets (`GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_SECRET`, `LINKEDIN_CLIENT_SECRET`, or `JWT_SECRET`) in Vercel or `NEXT_PUBLIC_*` variables. All token exchanges and credentials stay securely isolated on Render.
 
 > **Note:** StartupLens AI requires at least one LLM key (`GEMINI_API_KEY`, `GROQ_API_KEY`, or `MISTRAL_API_KEY`) and `TAVILY_API_KEY` to perform research.
 
@@ -112,7 +124,57 @@ In the Vercel **Environment Variables** section:
 
 ---
 
-## 6. CORS Configuration
+## 6. Social OAuth Provider Configuration
+
+StartupLens AI supports secure server-side social authentication via **Google**, **GitHub**, and **LinkedIn**.
+All authorization callbacks route strictly through the **Render Backend API**, which exchanges credentials server-side and issues an encrypted HttpOnly session cookie before redirecting the user back to the Vercel frontend workspace.
+
+### A. Google OAuth 2.0 / OIDC Setup
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/).
+2. Navigate to **APIs & Services** → **Credentials**.
+3. Click **Create Credentials** → **OAuth client ID**.
+4. Application type: **Web application**.
+5. Set **Authorized redirect URIs**:
+   - Production: `https://<YOUR-RENDER-API>.onrender.com/auth/google/callback`
+   - Local development (optional): `http://127.0.0.1:8003/auth/google/callback`
+6. Copy the **Client ID** and **Client Secret**.
+7. In the Render Dashboard under **Environment**, set:
+   - `GOOGLE_CLIENT_ID=<your-google-client-id>.apps.googleusercontent.com`
+   - `GOOGLE_CLIENT_SECRET=<your-google-client-secret>`
+   - `GOOGLE_REDIRECT_URI=https://<YOUR-RENDER-API>.onrender.com/auth/google/callback`
+
+### B. GitHub OAuth Setup
+1. Go to [GitHub Developer Settings](https://github.com/settings/developers).
+2. Click **New OAuth App**.
+3. Enter Application Details:
+   - **Application name:** `StartupLens AI`
+   - **Homepage URL:** `https://<YOUR-APP>.vercel.app`
+   - **Authorization callback URL:** `https://<YOUR-RENDER-API>.onrender.com/auth/github/callback`
+4. Register application and click **Generate a new client secret**.
+5. In the Render Dashboard under **Environment**, set:
+   - `GITHUB_CLIENT_ID=<your-github-client-id>`
+   - `GITHUB_CLIENT_SECRET=<your-github-client-secret>`
+   - `GITHUB_REDIRECT_URI=https://<YOUR-RENDER-API>.onrender.com/auth/github/callback`
+6. *Note on Permissions:* StartupLens requests only minimum read-only profile & email scopes (`read:user user:email`). It does NOT request repository write access.
+
+### C. LinkedIn OAuth 2.0 / OpenID Connect Setup
+1. Go to the [LinkedIn Developer Portal](https://www.linkedin.com/developers/).
+2. Click **Create App** and associate it with your company/project page.
+3. In the **Products** tab, request access to **Sign In with LinkedIn using OpenID Connect**.
+4. In the **Auth** tab:
+   - Set **Authorized redirect URLs for your app**:
+     - Production: `https://<YOUR-RENDER-API>.onrender.com/auth/linkedin/callback`
+     - Local development (optional): `http://127.0.0.1:8003/auth/linkedin/callback`
+5. Note the **Client ID** and generate the **Primary Client Secret**.
+6. In the Render Dashboard under **Environment**, set:
+   - `LINKEDIN_CLIENT_ID=<your-linkedin-client-id>`
+   - `LINKEDIN_CLIENT_SECRET=<your-linkedin-client-secret>`
+   - `LINKEDIN_REDIRECT_URI=https://<YOUR-RENDER-API>.onrender.com/auth/linkedin/callback`
+7. *Note on Scopes:* StartupLens uses the standard LinkedIn OIDC scopes (`openid profile email`) without requesting extraneous organization permissions.
+
+---
+
+## 7. CORS Configuration
 
 FastAPI handles CORS dynamically in `backend/main.py`:
 - Allowed origins include `http://localhost:3000`, `http://127.0.0.1:3000`, and whatever is specified in `FRONTEND_URL`.
@@ -121,7 +183,7 @@ FastAPI handles CORS dynamically in `backend/main.py`:
 
 ---
 
-## 7. API URL Configuration
+## 8. API URL Configuration
 
 The frontend in `frontend/src/lib/api.ts` references:
 ```typescript
@@ -133,7 +195,7 @@ All API interactions (`/analyze`, `/research`, `/models`, `/config/status`, docu
 
 ---
 
-## 8. Verification: Health Check
+## 9. Verification: Health Check
 
 Verify the backend is live:
 ```bash
@@ -150,7 +212,7 @@ curl -s https://<YOUR-RENDER-API>.onrender.com/health
 
 ---
 
-## 9. Verification: Models & Config Status
+## 10. Verification: Models & Config Status
 
 Verify configured models:
 ```bash
@@ -174,7 +236,7 @@ curl -s https://<YOUR-RENDER-API>.onrender.com/config/status
 
 ---
 
-## 10. Verification: Analyze Endpoint Test
+## 11. Verification: Analyze Endpoint Test
 
 Run an end-to-end research query on the production backend:
 ```bash
@@ -192,7 +254,7 @@ A full JSON payload containing:
 
 ---
 
-## 11. SQLite Ephemeral Hosting Limitation
+## 12. SQLite Ephemeral Hosting Limitation
 
 - Render Free / Starter instances use an **ephemeral disk**.
 - When the Render service restarts, scales, or redeploys, the local `startuplens.db` file may reset to the initial state.
@@ -203,7 +265,7 @@ A full JSON payload containing:
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 | Symptom | Cause | Solution |
 |---|---|---|

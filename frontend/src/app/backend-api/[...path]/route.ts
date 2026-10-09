@@ -2,6 +2,40 @@ import { NextRequest, NextResponse } from "next/server";
 
 const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8003").replace(/\/$/, "");
 
+function buildForwardHeaders(req: NextRequest, isJsonBody = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+  const contentType = req.headers.get("content-type");
+  if (contentType) {
+    headers["content-type"] = contentType;
+  } else if (isJsonBody) {
+    headers["content-type"] = "application/json";
+  }
+
+  const accept = req.headers.get("accept");
+  if (accept) headers["accept"] = accept;
+
+  const cookie = req.headers.get("cookie");
+  if (cookie) headers["cookie"] = cookie;
+
+  const auth = req.headers.get("authorization");
+  if (auth) headers["authorization"] = auth;
+
+  return headers;
+}
+
+function copyResponseHeaders(res: Response): Headers {
+  const headers = new Headers();
+  const contentType = res.headers.get("content-type") || "application/json";
+  headers.set("content-type", contentType);
+
+  const setCookie = res.headers.get("set-cookie");
+  if (setCookie) {
+    headers.set("set-cookie", setCookie);
+  }
+
+  return headers;
+}
+
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ path: string[] }> }
@@ -13,16 +47,12 @@ export async function GET(
 
   try {
     const res = await fetch(url.toString(), {
-      headers: {
-        Accept: req.headers.get("accept") || "application/json",
-      },
+      headers: buildForwardHeaders(req),
     });
     const body = await res.arrayBuffer();
     return new NextResponse(body, {
       status: res.status,
-      headers: {
-        "content-type": res.headers.get("content-type") || "application/json",
-      },
+      headers: copyResponseHeaders(res),
     });
   } catch (error) {
     return NextResponse.json(
@@ -43,21 +73,15 @@ export async function POST(
 
   try {
     const body = await req.arrayBuffer();
-    const headers: Record<string, string> = {};
-    const contentType = req.headers.get("content-type");
-    if (contentType) headers["content-type"] = contentType;
-
     const res = await fetch(url.toString(), {
       method: "POST",
-      headers,
+      headers: buildForwardHeaders(req, body.byteLength > 0),
       body: body.byteLength > 0 ? body : undefined,
     });
     const resBody = await res.arrayBuffer();
     return new NextResponse(resBody, {
       status: res.status,
-      headers: {
-        "content-type": res.headers.get("content-type") || "application/json",
-      },
+      headers: copyResponseHeaders(res),
     });
   } catch (error) {
     return NextResponse.json(
@@ -78,21 +102,15 @@ export async function PUT(
 
   try {
     const body = await req.arrayBuffer();
-    const headers: Record<string, string> = {};
-    const contentType = req.headers.get("content-type");
-    if (contentType) headers["content-type"] = contentType;
-
     const res = await fetch(url.toString(), {
       method: "PUT",
-      headers,
+      headers: buildForwardHeaders(req, body.byteLength > 0),
       body: body.byteLength > 0 ? body : undefined,
     });
     const resBody = await res.arrayBuffer();
     return new NextResponse(resBody, {
       status: res.status,
-      headers: {
-        "content-type": res.headers.get("content-type") || "application/json",
-      },
+      headers: copyResponseHeaders(res),
     });
   } catch (error) {
     return NextResponse.json(
@@ -113,21 +131,15 @@ export async function PATCH(
 
   try {
     const body = await req.arrayBuffer();
-    const headers: Record<string, string> = {};
-    const contentType = req.headers.get("content-type");
-    if (contentType) headers["content-type"] = contentType;
-
     const res = await fetch(url.toString(), {
       method: "PATCH",
-      headers,
+      headers: buildForwardHeaders(req, body.byteLength > 0),
       body: body.byteLength > 0 ? body : undefined,
     });
     const resBody = await res.arrayBuffer();
     return new NextResponse(resBody, {
       status: res.status,
-      headers: {
-        "content-type": res.headers.get("content-type") || "application/json",
-      },
+      headers: copyResponseHeaders(res),
     });
   } catch (error) {
     return NextResponse.json(
@@ -149,13 +161,12 @@ export async function DELETE(
   try {
     const res = await fetch(url.toString(), {
       method: "DELETE",
+      headers: buildForwardHeaders(req),
     });
     const resBody = await res.arrayBuffer();
     return new NextResponse(resBody, {
       status: res.status,
-      headers: {
-        "content-type": res.headers.get("content-type") || "application/json",
-      },
+      headers: copyResponseHeaders(res),
     });
   } catch (error) {
     return NextResponse.json(

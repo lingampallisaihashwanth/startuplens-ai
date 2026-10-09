@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import { getResearch, deleteResearch, SessionSummary } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 
 interface SidebarProps {
   activeSessionId: string | null;
@@ -48,6 +50,8 @@ export function Sidebar({
   onOpenSettings,
   savedIdeasCount = 0,
 }: SidebarProps) {
+  const router = useRouter();
+  const { user, logout } = useAuth();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +59,7 @@ export function Sidebar({
   const [showSearchInput, setShowSearchInput] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showUserMenu, setShowUserMenu] = useState<boolean>(false);
+  const [showAccountModal, setShowAccountModal] = useState<boolean>(false);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
   const fetchSessions = useCallback(async () => {
@@ -609,31 +614,40 @@ export function Sidebar({
           </div>
         </div>
 
-        {/* Bottom User Profile Section: Founder Workspace with Attached PRO Badge */}
+        {/* Bottom User Profile Section: SL / User Name / Founder Workspace */}
         <div className="relative shrink-0 border-t border-[var(--border)] p-3">
           <div className="flex items-center justify-between rounded-xl border border-[var(--border)] bg-[var(--surface)] p-2.5 hover:border-[var(--border)]/80 transition-colors">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-raised)] border border-[var(--border-subtle)] text-xs font-bold text-[var(--accent)] font-mono">
-                SL
-                <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--success)] ring-2 ring-[var(--surface)]" />
-              </div>
+              {user?.avatar_url ? (
+                <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg overflow-hidden border border-[var(--border-subtle)]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={user.avatar_url} alt={user.name || "User"} className="h-full w-full object-cover" />
+                  <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--success)] ring-2 ring-[var(--surface)]" />
+                </div>
+              ) : (
+                <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--surface-raised)] border border-[var(--border-subtle)] text-xs font-bold text-[var(--accent)] font-mono">
+                  SL
+                  <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-[var(--success)] ring-2 ring-[var(--surface)]" />
+                </div>
+              )}
               <div className="min-w-0">
+                <p className="truncate text-xs font-semibold text-[var(--foreground)]">
+                  {user?.name || "StartupLens User"}
+                </p>
                 <div className="flex items-center gap-1.5">
-                  <p className="truncate text-xs font-semibold text-[var(--foreground)]">
+                  <p className="truncate text-[10px] text-[var(--muted)]">
                     Founder Workspace
                   </p>
                   <span className="shrink-0 rounded px-1.5 py-0.2 text-[9px] font-mono font-bold bg-[var(--accent-subtle)] text-[var(--accent)] border border-[var(--accent)]/30">
                     PRO
                   </span>
                 </div>
-                <p className="truncate text-[10px] text-[var(--muted)]">
-                  Researcher Tier · Connected
-                </p>
               </div>
             </div>
 
             <button
               type="button"
+              id="sidebar-user-menu-btn"
               onClick={() => setShowUserMenu((v) => !v)}
               aria-label="User account menu"
               className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--muted)] hover:text-[var(--foreground)] hover:bg-[var(--surface-hover)] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--focus)]"
@@ -650,33 +664,104 @@ export function Sidebar({
           {showUserMenu && (
             <div className="absolute bottom-full left-3 right-3 mb-2 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] p-2 shadow-2xl z-30 animate-in fade-in">
               <div className="px-2 py-1 border-b border-[var(--border)] pb-2 mb-1">
-                <p className="text-xs font-semibold text-[var(--foreground)]">StartupLens AI</p>
-                <p className="text-[10px] text-[var(--muted)]">Connected to FastAPI + SQLite</p>
+                <p className="text-xs font-semibold text-[var(--foreground)] truncate">{user?.name || "StartupLens AI"}</p>
+                <p className="text-[10px] text-[var(--muted)] truncate">{user?.email || "Founder Workspace"}</p>
               </div>
               <button
                 type="button"
+                id="btn-menu-account"
+                onClick={() => {
+                  setShowUserMenu(false);
+                  setShowAccountModal(true);
+                }}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+              >
+                <span>👤 Account</span>
+              </button>
+              <button
+                type="button"
+                id="btn-menu-settings"
                 onClick={() => {
                   setShowUserMenu(false);
                   onOpenSettings();
                 }}
                 className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
               >
-                <span>⚙️ System Info & Settings</span>
+                <span>⚙️ Settings</span>
               </button>
+              <div className="my-1 border-t border-[var(--border)]" />
               <button
                 type="button"
-                onClick={() => {
+                id="btn-menu-signout"
+                onClick={async () => {
                   setShowUserMenu(false);
-                  onNavigate("saved");
+                  await logout();
+                  router.push("/login");
                 }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[var(--text-secondary)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-xs text-[var(--danger)] hover:bg-[var(--danger)]/10"
               >
-                <span>⭐ View Saved Ideas</span>
+                <span>🚪 Sign out</span>
               </button>
             </div>
           )}
         </div>
       </aside>
+
+      {/* Account Details Modal */}
+      {showAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-sm rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] mb-4">
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">Account Details</h3>
+              <button
+                type="button"
+                onClick={() => setShowAccountModal(false)}
+                className="text-[var(--muted)] hover:text-[var(--foreground)] text-xs rounded px-1.5 py-0.5 hover:bg-[var(--surface-hover)]"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <div>
+                <span className="text-[10px] text-[var(--muted)] uppercase font-semibold">Name</span>
+                <p className="text-[var(--foreground)] font-medium mt-0.5">{user?.name || "Not set"}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-[var(--muted)] uppercase font-semibold">Email</span>
+                <p className="text-[var(--foreground)] font-mono mt-0.5">{user?.email || "Not set"}</p>
+              </div>
+              <div>
+                <span className="text-[10px] text-[var(--muted)] uppercase font-semibold">Primary Provider</span>
+                <p className="text-[var(--foreground)] capitalize mt-0.5">{user?.auth_provider || "Email / Password"}</p>
+              </div>
+              {user?.identities && user.identities.length > 0 && (
+                <div>
+                  <span className="text-[10px] text-[var(--muted)] uppercase font-semibold">Linked Identities</span>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    {user.identities.map((id, idx) => (
+                      <span
+                        key={idx}
+                        className="rounded px-2 py-0.5 text-[10px] font-medium bg-[var(--surface-raised)] border border-[var(--border)] text-[var(--accent)]"
+                      >
+                        {id.provider}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowAccountModal(false)}
+                className="rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] px-4 py-1.5 text-xs font-semibold text-[var(--foreground)] hover:bg-[var(--surface-hover)]"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -52,7 +52,7 @@ class DatabaseManager:
     """
 
     def __init__(self, db_path: Optional[str] = None):
-        self.db_path = db_path if db_path is not None else resolve_db_path()
+        self.db_path = resolve_db_path(db_path)
         self._is_memory = (self.db_path == ":memory:")
         self._memory_conn: Optional[sqlite3.Connection] = None
         logger.info(f"DatabaseManager initialized with path: {self.db_path}")
@@ -187,6 +187,48 @@ class DatabaseManager:
                         created_at TEXT NOT NULL
                     );
 
+                    CREATE TABLE IF NOT EXISTS users (
+                        id TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        email TEXT NOT NULL UNIQUE,
+                        password_hash TEXT,
+                        auth_provider TEXT,
+                        provider_user_id TEXT,
+                        avatar_url TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        UNIQUE (auth_provider, provider_user_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS user_identities (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        provider TEXT NOT NULL,
+                        provider_user_id TEXT NOT NULL,
+                        email TEXT,
+                        avatar_url TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                        UNIQUE (provider, provider_user_id)
+                    );
+
+                    CREATE TABLE IF NOT EXISTS auth_sessions (
+                        id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        token_hash TEXT NOT NULL UNIQUE,
+                        expires_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                    );
+
+                    CREATE TABLE IF NOT EXISTS oauth_states (
+                        state TEXT PRIMARY KEY,
+                        provider TEXT NOT NULL,
+                        redirect_to TEXT,
+                        expires_at TEXT NOT NULL,
+                        created_at TEXT NOT NULL
+                    );
+
                     CREATE INDEX IF NOT EXISTS idx_sources_session ON sources(session_id);
                     CREATE INDEX IF NOT EXISTS idx_reports_session ON reports(session_id);
                     CREATE INDEX IF NOT EXISTS idx_opps_session ON opportunities(session_id);
@@ -194,6 +236,11 @@ class DatabaseManager:
                     CREATE INDEX IF NOT EXISTS idx_saved_ideas_created ON saved_ideas(created_at);
                     CREATE INDEX IF NOT EXISTS idx_trackers_topic ON research_trackers(topic);
                     CREATE INDEX IF NOT EXISTS idx_signals_tracker ON market_signals(tracker_id);
+                    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+                    CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities(user_id);
+                    CREATE INDEX IF NOT EXISTS idx_user_identities_provider ON user_identities(provider, provider_user_id);
+                    CREATE INDEX IF NOT EXISTS idx_auth_sessions_token ON auth_sessions(token_hash);
+                    CREATE INDEX IF NOT EXISTS idx_oauth_states_created ON oauth_states(created_at);
                     """
                 )
                 try:
@@ -202,6 +249,18 @@ class DatabaseManager:
                     pass
                 try:
                     conn.execute("ALTER TABLE sessions ADD COLUMN model_used TEXT DEFAULT 'gemini-3.8-flash';")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE sessions ADD COLUMN user_id TEXT;")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE saved_ideas ADD COLUMN user_id TEXT;")
+                except Exception:
+                    pass
+                try:
+                    conn.execute("ALTER TABLE documents ADD COLUMN user_id TEXT;")
                 except Exception:
                     pass
             logger.info("Database schema initialized successfully.")
@@ -220,6 +279,9 @@ class DatabaseManager:
         created_at: Optional[str] = None,
         updated_at: Optional[str] = None,
         model_used: Optional[str] = None,
+        user_id: Optional[str] = None,
+        company_analysis: Optional[Any] = None,
+        intent: Optional[str] = None,
     ) -> str:
         """
         Persist a complete research and opportunity analysis session atomically.
@@ -241,11 +303,19 @@ class DatabaseManager:
             elif isinstance(s, dict):
                 norm_sources.append(s)
 
-        # Report JSON combining research and analysis
-        report_data = {
+        # Report JSON combining research, analysis, and company_analysis if present
+        report_data: Dict[str, Any] = {
             "research": research_dict,
             "analysis": analysis_dict,
         }
+        if company_analysis:
+            report_data["company_analysis"] = (
+                company_analysis.model_dump()
+                if hasattr(company_analysis, "model_dump")
+                else dict(company_analysis)
+            )
+        if intent:
+            report_data["intent"] = intent
         report_json = json.dumps(report_data, ensure_ascii=False)
 
         conn = self.get_connection()
@@ -254,10 +324,10 @@ class DatabaseManager:
                 # 1. Insert session
                 conn.execute(
                     """
-                    INSERT INTO sessions (id, topic, model_used, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO sessions (id, topic, model_used, created_at, updated_at, user_id)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (session_id, topic, model_used or settings.GEMINI_MODEL, c_at, u_at),
+                    (session_id, topic, model_used or settings.GEMINI_MODEL, c_at, u_at, user_id),
                 )
 
                 # 2. Insert sources
@@ -326,30 +396,53 @@ class DatabaseManager:
             if not self._is_memory:
                 conn.close()
 
-    def get_sessions(self, limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+    def get_sessions(self, limit: int = 50, offset: int = 0, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Return list of recent sessions with counts.
         """
         conn = self.get_connection()
         try:
-            cursor = conn.execute(
-                """
-                SELECT 
-                    s.id,
-                    s.topic,
-                    s.created_at,
-                    s.updated_at,
-                    COUNT(DISTINCT src.id) as sources_count,
-                    COUNT(DISTINCT o.id) as opportunities_count
-                FROM sessions s
-                LEFT JOIN sources src ON s.id = src.session_id
-                LEFT JOIN opportunities o ON s.id = o.session_id
-                GROUP BY s.id
-                ORDER BY s.created_at DESC
-                LIMIT ? OFFSET ?
-                """,
-                (limit, offset),
-            )
+            if user_id:
+                cursor = conn.execute(
+                    """
+                    SELECT 
+                        s.id,
+                        s.topic,
+                        s.created_at,
+                        s.updated_at,
+                        s.user_id,
+                        COUNT(DISTINCT src.id) as sources_count,
+                        COUNT(DISTINCT o.id) as opportunities_count
+                    FROM sessions s
+                    LEFT JOIN sources src ON s.id = src.session_id
+                    LEFT JOIN opportunities o ON s.id = o.session_id
+                    WHERE s.user_id = ? OR s.user_id IS NULL
+                    GROUP BY s.id
+                    ORDER BY s.created_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (user_id, limit, offset),
+                )
+            else:
+                cursor = conn.execute(
+                    """
+                    SELECT 
+                        s.id,
+                        s.topic,
+                        s.created_at,
+                        s.updated_at,
+                        s.user_id,
+                        COUNT(DISTINCT src.id) as sources_count,
+                        COUNT(DISTINCT o.id) as opportunities_count
+                    FROM sessions s
+                    LEFT JOIN sources src ON s.id = src.session_id
+                    LEFT JOIN opportunities o ON s.id = o.session_id
+                    GROUP BY s.id
+                    ORDER BY s.created_at DESC
+                    LIMIT ? OFFSET ?
+                    """,
+                    (limit, offset),
+                )
             rows = cursor.fetchall()
             results = []
             for row in rows:
@@ -360,6 +453,7 @@ class DatabaseManager:
                         "topic": row["topic"],
                         "created_at": row["created_at"],
                         "updated_at": row["updated_at"],
+                        "user_id": row["user_id"] if "user_id" in row.keys() else None,
                         "sources_count": row["sources_count"],
                         "opportunities_count": row["opportunities_count"],
                     }
@@ -377,7 +471,7 @@ class DatabaseManager:
         try:
             # 1. Fetch session
             cur = conn.execute(
-                "SELECT id, topic, created_at, updated_at FROM sessions WHERE id = ?",
+                "SELECT id, topic, created_at, updated_at, user_id FROM sessions WHERE id = ?",
                 (session_id,),
             )
             session_row = cur.fetchone()
@@ -474,14 +568,17 @@ class DatabaseManager:
                 "id": session_row["id"],
                 "session_id": session_row["id"],
                 "topic": session_row["topic"],
+                "intent": report_data.get("intent", "MARKET_RESEARCH"),
                 "created_at": session_row["created_at"],
                 "updated_at": session_row["updated_at"],
+                "user_id": session_row["user_id"] if "user_id" in session_row.keys() else None,
                 "retrieved_at": retrieved_at,
                 "research_disclaimer": disclaimer,
                 "research": research_part,
                 "analysis": analysis_part,
                 "opportunities": opps_list,
                 "sources": sources_list,
+                "company_analysis": report_data.get("company_analysis"),
             }
         finally:
             if not self._is_memory:
@@ -612,6 +709,7 @@ class DatabaseManager:
         opportunity: Dict[str, Any],
         session_id: Optional[str] = None,
         topic: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Save an opportunity idea to SQLite."""
         title = opportunity.get("title", "Untitled Opportunity")
@@ -629,24 +727,25 @@ class DatabaseManager:
                     conn.execute(
                         """
                         UPDATE saved_ideas
-                        SET opportunity_json = ?, session_id = ?, topic = ?
+                        SET opportunity_json = ?, session_id = ?, topic = ?, user_id = coalesce(?, user_id)
                         WHERE id = ?
                         """,
-                        (json.dumps(opportunity, ensure_ascii=False), session_id, topic, idea_id),
+                        (json.dumps(opportunity, ensure_ascii=False), session_id, topic, user_id, idea_id),
                     )
                 else:
                     conn.execute(
                         """
-                        INSERT INTO saved_ideas (id, opportunity_title, session_id, topic, opportunity_json, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        INSERT INTO saved_ideas (id, opportunity_title, session_id, topic, opportunity_json, created_at, user_id)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (idea_id, title, session_id, topic, json.dumps(opportunity, ensure_ascii=False), now_iso),
+                        (idea_id, title, session_id, topic, json.dumps(opportunity, ensure_ascii=False), now_iso, user_id),
                     )
             return {
                 "id": idea_id,
                 "opportunity_title": title,
                 "session_id": session_id,
                 "topic": topic,
+                "user_id": user_id,
                 "opportunity": opportunity,
                 "created_at": now_iso,
             }
@@ -654,11 +753,17 @@ class DatabaseManager:
             if not self._is_memory:
                 conn.close()
 
-    def get_saved_ideas(self) -> List[Dict[str, Any]]:
+    def get_saved_ideas(self, user_id: Optional[str] = None) -> List[Dict[str, Any]]:
         """Retrieve all saved opportunity ideas."""
         conn = self.get_connection()
         try:
-            cur = conn.execute("SELECT * FROM saved_ideas ORDER BY created_at DESC")
+            if user_id:
+                cur = conn.execute(
+                    "SELECT * FROM saved_ideas WHERE user_id = ? OR user_id IS NULL ORDER BY created_at DESC",
+                    (user_id,),
+                )
+            else:
+                cur = conn.execute("SELECT * FROM saved_ideas ORDER BY created_at DESC")
             ideas = []
             for row in cur.fetchall():
                 ideas.append(
@@ -667,11 +772,36 @@ class DatabaseManager:
                         "opportunity_title": row["opportunity_title"],
                         "session_id": row["session_id"],
                         "topic": row["topic"],
+                        "user_id": row["user_id"] if "user_id" in row.keys() else None,
                         "opportunity": json.loads(row["opportunity_json"]),
                         "created_at": row["created_at"],
                     }
                 )
             return ideas
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def get_saved_idea(self, idea_id_or_title: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a specific saved idea by ID or title."""
+        conn = self.get_connection()
+        try:
+            cur = conn.execute(
+                "SELECT * FROM saved_ideas WHERE id = ? OR opportunity_title = ? LIMIT 1",
+                (idea_id_or_title, idea_id_or_title),
+            )
+            row = cur.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row["id"],
+                "opportunity_title": row["opportunity_title"],
+                "session_id": row["session_id"],
+                "topic": row["topic"],
+                "user_id": row["user_id"] if "user_id" in row.keys() else None,
+                "opportunity": json.loads(row["opportunity_json"]),
+                "created_at": row["created_at"],
+            }
         finally:
             if not self._is_memory:
                 conn.close()
@@ -1035,6 +1165,278 @@ class DatabaseManager:
                     }
                 )
             return reports
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    # ── User and Authentication Methods ──────────────────────────────────────
+
+    def create_user(
+        self,
+        name: str,
+        email: str,
+        password_hash: Optional[str] = None,
+        auth_provider: Optional[str] = None,
+        provider_user_id: Optional[str] = None,
+        avatar_url: Optional[str] = None,
+        user_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Create a new user account safely."""
+        uid = user_id or f"usr_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        clean_email = email.strip().lower()
+        conn = self.get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO users (id, name, email, password_hash, auth_provider, provider_user_id, avatar_url, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (uid, name, clean_email, password_hash, auth_provider, provider_user_id, avatar_url, now, now),
+                )
+                if auth_provider and provider_user_id:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO user_identities (id, user_id, provider, provider_user_id, email, avatar_url, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (f"id_{uuid.uuid4().hex[:12]}", uid, auth_provider, str(provider_user_id), clean_email, avatar_url, now),
+                    )
+            return self.get_user_by_id(uid)  # type: ignore
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve user by unique id."""
+        conn = self.get_connection()
+        try:
+            cur = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+            row = cur.fetchone()
+            if not row:
+                return None
+            user = dict(row)
+            user["linked_providers"] = self.get_user_identities(user_id)
+            user["identities"] = user["linked_providers"]
+            return user
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def get_user_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        """Retrieve user by lowercase email."""
+        conn = self.get_connection()
+        try:
+            cur = conn.execute("SELECT * FROM users WHERE LOWER(email) = ?", (email.strip().lower(),))
+            row = cur.fetchone()
+            if not row:
+                return None
+            user = dict(row)
+            user["linked_providers"] = self.get_user_identities(user["id"])
+            user["identities"] = user["linked_providers"]
+            return user
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def get_user_by_provider(self, auth_provider: str, provider_user_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve user by social identity (first checking user_identities then users table)."""
+        conn = self.get_connection()
+        try:
+            # Check user_identities
+            cur = conn.execute(
+                "SELECT user_id FROM user_identities WHERE provider = ? AND provider_user_id = ?",
+                (auth_provider, str(provider_user_id)),
+            )
+            row = cur.fetchone()
+            if row:
+                return self.get_user_by_id(row["user_id"])
+
+            # Check users table
+            cur = conn.execute(
+                "SELECT * FROM users WHERE auth_provider = ? AND provider_user_id = ?",
+                (auth_provider, str(provider_user_id)),
+            )
+            row = cur.fetchone()
+            if row:
+                return self.get_user_by_id(row["id"])
+            return None
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def update_user(self, user_id: str, **kwargs) -> Optional[Dict[str, Any]]:
+        """Update user profile fields."""
+        allowed = {"name", "password_hash", "auth_provider", "provider_user_id", "avatar_url"}
+        updates = {k: v for k, v in kwargs.items() if k in allowed}
+        if not updates:
+            return self.get_user_by_id(user_id)
+
+        now = datetime.now(timezone.utc).isoformat()
+        updates["updated_at"] = now
+        set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+        params = list(updates.values()) + [user_id]
+
+        conn = self.get_connection()
+        try:
+            with conn:
+                conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", params)
+            return self.get_user_by_id(user_id)
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def link_provider_identity(
+        self,
+        user_id: str,
+        provider: str,
+        provider_user_id: str,
+        email: Optional[str] = None,
+        avatar_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Safely link an external social identity to an existing verified user."""
+        now = datetime.now(timezone.utc).isoformat()
+        clean_email = email.strip().lower() if email else None
+        conn = self.get_connection()
+        try:
+            with conn:
+                # Insert into user_identities
+                conn.execute(
+                    """
+                    INSERT INTO user_identities (id, user_id, provider, provider_user_id, email, avatar_url, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(provider, provider_user_id) DO UPDATE SET
+                        user_id = excluded.user_id,
+                        email = coalesce(excluded.email, user_identities.email),
+                        avatar_url = coalesce(excluded.avatar_url, user_identities.avatar_url)
+                    """,
+                    (f"id_{uuid.uuid4().hex[:12]}", user_id, provider, str(provider_user_id), clean_email, avatar_url, now),
+                )
+                # If user doesn't have an auth_provider or avatar set, update users table
+                cur = conn.execute("SELECT auth_provider, avatar_url FROM users WHERE id = ?", (user_id,))
+                user_row = cur.fetchone()
+                if user_row:
+                    updates = {}
+                    if not user_row["auth_provider"]:
+                        updates["auth_provider"] = provider
+                        updates["provider_user_id"] = str(provider_user_id)
+                    if not user_row["avatar_url"] and avatar_url:
+                        updates["avatar_url"] = avatar_url
+                    if updates:
+                        set_clause = ", ".join(f"{k} = ?" for k in updates.keys())
+                        params = list(updates.values()) + [user_id]
+                        conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", params)
+            return self.get_user_by_id(user_id)  # type: ignore
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def get_user_identities(self, user_id: str) -> List[Dict[str, Any]]:
+        """List all identities linked to a user."""
+        conn = self.get_connection()
+        try:
+            cur = conn.execute(
+                "SELECT id, provider, provider_user_id, email, avatar_url, created_at FROM user_identities WHERE user_id = ?",
+                (user_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def create_auth_session(self, user_id: str, token_hash: str, expires_at: str) -> Dict[str, Any]:
+        """Record an active session token for a user."""
+        sess_id = f"asess_{uuid.uuid4().hex[:12]}"
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self.get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (sess_id, user_id, token_hash, expires_at, now),
+                )
+            return {"id": sess_id, "user_id": user_id, "token_hash": token_hash, "expires_at": expires_at}
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def get_auth_session(self, token_hash: str) -> Optional[Dict[str, Any]]:
+        """Find an active session if not expired."""
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self.get_connection()
+        try:
+            cur = conn.execute(
+                "SELECT * FROM auth_sessions WHERE token_hash = ? AND expires_at > ?",
+                (token_hash, now),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def delete_auth_session(self, token_hash: str) -> bool:
+        """Revoke a specific session."""
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.execute("DELETE FROM auth_sessions WHERE token_hash = ?", (token_hash,))
+                return cur.rowcount > 0
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def delete_user_sessions(self, user_id: str) -> bool:
+        """Revoke all sessions for a user (e.g. on logout all devices)."""
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.execute("DELETE FROM auth_sessions WHERE user_id = ?", (user_id,))
+                return cur.rowcount > 0
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def save_oauth_state(self, state: str, provider: str, redirect_to: Optional[str] = None, expires_at: Optional[str] = None) -> Dict[str, Any]:
+        """Store an OAuth CSRF state nonce with a short expiration."""
+        now = datetime.now(timezone.utc).isoformat()
+        from datetime import timedelta
+        exp = expires_at or (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        conn = self.get_connection()
+        try:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO oauth_states (state, provider, redirect_to, expires_at, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (state, provider, redirect_to or "", exp, now),
+                )
+            return {"state": state, "provider": provider, "redirect_to": redirect_to, "expires_at": exp}
+        finally:
+            if not self._is_memory:
+                conn.close()
+
+    def verify_and_consume_oauth_state(self, state: str, provider: str) -> Optional[Dict[str, Any]]:
+        """Verify an OAuth state against CSRF, and delete it immediately (single-use)."""
+        now = datetime.now(timezone.utc).isoformat()
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.execute(
+                    "SELECT * FROM oauth_states WHERE state = ? AND provider = ? AND expires_at > ?",
+                    (state, provider, now),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return None
+                data = dict(row)
+                conn.execute("DELETE FROM oauth_states WHERE state = ?", (state,))
+                return data
         finally:
             if not self._is_memory:
                 conn.close()

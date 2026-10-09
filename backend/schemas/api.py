@@ -14,10 +14,14 @@ class AnalyzeRequest(BaseModel):
     )
 
 
+from backend.schemas.company_analysis import CompanyAnalysisOutput
+
+
 class AnalyzeResponse(BaseModel):
     id: str = Field(..., description="Unique research session identifier")
     session_id: str = Field(..., description="Unique session ID (alias)")
     topic: str = Field(..., description="Researched topic")
+    intent: Optional[str] = Field("MARKET_RESEARCH", description="Detected intent: CASUAL_CHAT, COMPANY_ANALYSIS, MARKET_RESEARCH, STARTUP_OPPORTUNITY_RESEARCH")
     created_at: Optional[str] = Field(None, description="ISO timestamp of session creation")
     updated_at: Optional[str] = Field(None, description="ISO timestamp of session last update")
     retrieved_at: Optional[str] = Field(None, description="ISO timestamp when fresh web research was retrieved")
@@ -28,8 +32,22 @@ class AnalyzeResponse(BaseModel):
     research_disclaimer: Optional[str] = Field(None, description="Freshness and web retrieval disclaimer")
     research: ResearchOutput = Field(..., description="Research findings and signals")
     analysis: MarketAnalysisOutput = Field(..., description="Synthesized market analysis")
-    opportunities: List[Opportunity] = Field(..., description="Hypothesized startup opportunities")
+    opportunities: List[Opportunity] = Field(default_factory=list, description="Hypothesized startup opportunities")
     sources: List[ResearchSource] = Field(..., description="Collected source references")
+    company_analysis: Optional[CompanyAnalysisOutput] = Field(None, description="Company analysis for existing company case studies")
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, description="User chat query")
+    document_ids: Optional[List[str]] = Field(default_factory=list, description="IDs of uploaded research documents to include")
+    model: Optional[str] = Field(None, description="Requested model ID")
+
+
+class ChatResponse(BaseModel):
+    intent: str = Field(..., description="Detected intent: CASUAL_CHAT, COMPANY_ANALYSIS, MARKET_RESEARCH, STARTUP_OPPORTUNITY_RESEARCH")
+    reply: str = Field(..., description="Natural response or executive synthesis")
+    session_id: Optional[str] = Field(None, description="Unique session ID if research was conducted")
+    data: Optional[AnalyzeResponse] = Field(None, description="Research or company analysis payload if applicable")
 
 
 class SessionSummary(BaseModel):

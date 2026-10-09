@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/Sidebar";
 import { AgentStatus, AgentStep } from "@/components/AgentStatus";
 import { Composer } from "@/components/Composer";
@@ -14,7 +16,7 @@ import { ResearchTrackerView } from "@/components/ResearchTrackerView";
 import { IntelligenceRail } from "@/components/IntelligenceRail";
 import { IntelligenceNetworkVisual } from "@/components/IntelligenceNetworkVisual";
 import {
-  analyzeTopic,
+  sendChatMessage,
   getResearchById,
   getModels,
   createTracker,
@@ -33,6 +35,8 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   topic?: string;
+  content?: string;
+  intent?: string;
   data?: AnalyzeResponse;
   error?: string;
   errorCode?: string;
@@ -51,6 +55,8 @@ function stepForProgress(step: number): AgentStep {
 // ─── Main Page Component ──────────────────────────────────────────────────────
 
 export default function Home() {
+  const router = useRouter();
+  const { user, loading: authLoading } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [agentStep, setAgentStep] = useState<AgentStep>("idle");
@@ -305,7 +311,7 @@ export default function Home() {
     ) => {
       setIsLoading(true);
       isLoadingRef.current = true;
-      setAgentStep("searching");
+      setAgentStep("idle");
 
       const stepTimers: ReturnType<typeof setTimeout>[] = [];
       const advance = (step: number, delay: number) => {
@@ -315,34 +321,69 @@ export default function Home() {
           }, delay)
         );
       };
+      // Schedule progressive agent status for research requests (delayed by 400ms to avoid flashing on instant casual chat)
+      advance(0, 400);   // searching: Searching web sources
       advance(1, 3500);  // extracting: Analyzing market signals
       advance(2, 8500);  // analyzing: Identifying customer problems
       advance(3, 15000); // generating: Generating opportunities
       advance(4, 22000); // validating: Validating evidence
 
       try {
-        const result = await analyzeTopic(topic, {
+        const result = await sendChatMessage(topic, {
           documentIds,
           model: selectedModel,
           signal: controller.signal,
         });
 
         stepTimers.forEach(clearTimeout);
-        setAgentStep("done");
-        setActiveSessionId(result.session_id);
 
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === asstMsgId
-              ? { ...m, topic, data: result, error: undefined, errorCode: undefined }
-              : m
-          )
-        );
-
-        // Brief 800ms transition for subtle success state before resting
-        setTimeout(() => {
+        if (result.intent === "CASUAL_CHAT") {
           setAgentStep("idle");
-        }, 800);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === asstMsgId
+                ? {
+                    ...m,
+                    topic,
+                    content: result.reply,
+                    intent: result.intent,
+                    data: undefined,
+                    error: undefined,
+                    errorCode: undefined,
+                  }
+                : m
+            )
+          );
+        } else {
+          setAgentStep("done");
+          const analysisData = result.data || undefined;
+          if (analysisData?.session_id) {
+            setActiveSessionId(analysisData.session_id);
+          } else if (result.session_id) {
+            setActiveSessionId(result.session_id);
+          }
+
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === asstMsgId
+                ? {
+                    ...m,
+                    topic,
+                    content: undefined,
+                    intent: result.intent,
+                    data: analysisData,
+                    error: undefined,
+                    errorCode: undefined,
+                  }
+                : m
+            )
+          );
+
+          // Brief 800ms transition for subtle success state before resting
+          setTimeout(() => {
+            setAgentStep("idle");
+          }, 800);
+        }
       } catch (err: unknown) {
         stepTimers.forEach(clearTimeout);
         setAgentStep("idle");
@@ -509,6 +550,12 @@ export default function Home() {
     [activeSessionId]
   );
 
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.replace("/login");
+    }
+  }, [user, authLoading, router]);
+
   const currentTopic =
     messages.find((m) => m.topic)?.topic ||
     (activeSessionId ? "Research Session" : "New Research");
@@ -517,6 +564,19 @@ export default function Home() {
   const currentModelEntry = models.find((m) => m.id === selectedModel);
 
   const showEmptyState = messages.length === 0 && !isLoading && currentNav === "chat";
+
+  if (authLoading || !user) {
+    return (
+      <div className="flex min-h-[100dvh] h-[100dvh] w-full items-center justify-center bg-[var(--background)]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm font-bold text-[var(--accent)] font-mono animate-pulse shadow-inner">
+            SL
+          </div>
+          <p className="text-xs text-[var(--muted)]">Loading workspace...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-[100dvh] h-[100dvh] overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
@@ -906,9 +966,15 @@ export default function Home() {
                           StartupLens AI
                         </span>
                         <span className="rounded-full bg-[var(--surface)] border border-[var(--border)] px-2 py-0.2 text-[10px] text-[var(--muted)]">
-                          Intelligence Agent
+                          {msg.intent === "CASUAL_CHAT" || msg.content ? "Assistant" : "Intelligence Agent"}
                         </span>
                       </div>
+
+                      {msg.content && (
+                        <div className="rounded-2xl rounded-tl-sm border border-[var(--border)] bg-[var(--surface)] p-4 text-xs leading-relaxed text-[var(--foreground)] whitespace-pre-line max-w-xl shadow-xs animate-[motionFadeSlideDown_200ms_cubic-bezier(0.16,1,0.3,1)_both]">
+                          {msg.content}
+                        </div>
+                      )}
 
                       {fallbackStatus && (
                         <div
@@ -934,7 +1000,7 @@ export default function Home() {
                         </div>
                       )}
 
-                      {!msg.data && !msg.error && (isLoading || agentStep === "done") && (
+                      {!msg.data && !msg.content && !msg.error && (isLoading || agentStep === "done") && (
                         <AgentStatus
                           currentStep={agentStep}
                           topic={msg.topic || (currentTopic !== "New Research" ? currentTopic : "Startup Intelligence")}

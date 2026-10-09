@@ -37,6 +37,27 @@ class Settings(BaseSettings):
         "http://127.0.0.1:8003",
     ]
 
+    # ── Authentication & OAuth ─────────────────────────────────────────────────
+    JWT_SECRET: str = "startuplens-super-secret-jwt-key-change-in-production"
+    SESSION_COOKIE_NAME: str = "startuplens_session"
+    SESSION_EXPIRE_SECONDS: int = 60 * 60 * 24 * 7  # 7 days
+    REQUIRE_AUTH: bool = False
+
+    # Google OAuth / OIDC
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:8003/auth/google/callback"
+
+    # GitHub OAuth
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+    GITHUB_REDIRECT_URI: str = "http://localhost:8003/auth/github/callback"
+
+    # LinkedIn OAuth / OIDC
+    LINKEDIN_CLIENT_ID: str = ""
+    LINKEDIN_CLIENT_SECRET: str = ""
+    LINKEDIN_REDIRECT_URI: str = "http://localhost:8003/auth/linkedin/callback"
+
     def get_cors_origins(self) -> List[str]:
         """Return combined list of allowed CORS origins including FRONTEND_URL."""
         origins = [o.rstrip("/") for o in self.CORS_ORIGINS]
@@ -60,6 +81,9 @@ class Settings(BaseSettings):
             "groq_configured": bool(self.GROQ_API_KEY and self.GROQ_API_KEY.strip()),
             "mistral_configured": bool(self.MISTRAL_API_KEY and self.MISTRAL_API_KEY.strip()),
             "tavily_configured": bool(self.TAVILY_API_KEY and self.TAVILY_API_KEY.strip()),
+            "google_oauth_configured": bool(self.GOOGLE_CLIENT_ID and self.GOOGLE_CLIENT_SECRET),
+            "github_oauth_configured": bool(self.GITHUB_CLIENT_ID and self.GITHUB_CLIENT_SECRET),
+            "linkedin_oauth_configured": bool(self.LINKEDIN_CLIENT_ID and self.LINKEDIN_CLIENT_SECRET),
         }
 
     def any_llm_configured(self) -> bool:
@@ -68,3 +92,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+def get_settings() -> Settings:
+    return settings

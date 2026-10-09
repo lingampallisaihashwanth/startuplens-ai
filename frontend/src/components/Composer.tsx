@@ -195,7 +195,7 @@ export function Composer({
             onKeyDown={handleKeyDown}
             disabled={isLoading}
             rows={1}
-            placeholder="Ask StartupLens about a market, problem, or startup idea..."
+            placeholder="Ask about a company, market, business, or startup idea..."
             aria-label="Research topic input"
             aria-describedby="composer-hint"
             className="w-full resize-none border-0 outline-none ring-0 focus:outline-none focus:ring-0 focus:border-0 focus-visible:outline-none focus-visible:ring-0 shadow-none focus:shadow-none bg-transparent text-sm sm:text-base leading-relaxed text-[var(--foreground)] placeholder-[var(--muted)] disabled:cursor-not-allowed transition-colors duration-140"

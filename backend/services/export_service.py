@@ -32,14 +32,98 @@ class ExportService:
         opportunities = session_data.get("opportunities", [])
         sources = session_data.get("sources", [])
 
+        company_analysis = session_data.get("company_analysis")
+
         lines = [
             f"# StartupLens AI — Research Intelligence Brief",
             f"**Topic:** {topic}  ",
             f"**Generated:** {created}  ",
             f"**Model:** {model_used}  \n",
             "---\n",
-            "## 1. Executive Summary & Market Trends\n",
         ]
+
+        if company_analysis:
+            cname = company_analysis.get("company_name", topic)
+            lines.append(f"## Company Intelligence Dossier: {cname}\n")
+            lines.append(f"**Overview:** {company_analysis.get('overview', '')}\n")
+            lines.append(f"**Founding Story:** {company_analysis.get('founding_story', '')}\n")
+            lines.append(f"**Original Problem:** {company_analysis.get('original_problem', '')}\n")
+            lines.append(f"**Business Model:** {company_analysis.get('business_model', '')}\n")
+            lines.append(f"**Target Customers:** {company_analysis.get('target_customers', '')}\n")
+            lines.append(f"**Early Growth & Traction:** {company_analysis.get('early_growth', '')}\n")
+            lines.append(f"**Growth Strategy:** {company_analysis.get('growth_strategy', '')}\n")
+            lines.append(f"**Funding & Expansion:** {company_analysis.get('funding_and_expansion', '')}\n")
+
+            if company_analysis.get("major_milestones"):
+                lines.append("### Major Milestones")
+                for m in company_analysis["major_milestones"]:
+                    lines.append(f"- {m}")
+                lines.append("")
+
+            if company_analysis.get("growth_drivers"):
+                lines.append("### Growth Drivers")
+                for gd in company_analysis["growth_drivers"]:
+                    lines.append(f"- {gd}")
+                lines.append("")
+
+            if company_analysis.get("turning_points"):
+                lines.append("### Critical Turning Points")
+                for tp in company_analysis["turning_points"]:
+                    lines.append(f"- {tp}")
+                lines.append("")
+
+            if company_analysis.get("warning_signs"):
+                lines.append("### Early Warning Signs")
+                for ws in company_analysis["warning_signs"]:
+                    lines.append(f"- {ws}")
+                lines.append("")
+
+            lines.append(f"**Competitive Dynamics:** {company_analysis.get('competition', '')}\n")
+            lines.append(f"**Market & Regulatory Climate:** {company_analysis.get('market_changes', '')}\n")
+
+            if company_analysis.get("strategic_mistakes"):
+                lines.append("### Strategic Mistakes")
+                for sm in company_analysis["strategic_mistakes"]:
+                    lines.append(f"- {sm}")
+                lines.append("")
+
+            if company_analysis.get("financial_problems"):
+                lines.append("### Financial & Unit Economics Problems")
+                for fp in company_analysis["financial_problems"]:
+                    lines.append(f"- {fp}")
+                lines.append("")
+
+            if company_analysis.get("reasons_for_decline_or_failure"):
+                lines.append("### Reasons for Decline or Failure")
+                for rf in company_analysis["reasons_for_decline_or_failure"]:
+                    lines.append(f"- {rf}")
+                lines.append("")
+
+            lines.append(f"**Current Status:** {company_analysis.get('current_status', '')}\n")
+
+            if company_analysis.get("lessons_for_founders"):
+                lines.append("### Actionable Lessons for Founders")
+                for lf in company_analysis["lessons_for_founders"]:
+                    lines.append(f"- {lf}")
+                lines.append("")
+
+            # Evidence Breakdown
+            lines.append("### Evidence Classification (Fact / Inference / Hypothesis)")
+            if company_analysis.get("facts"):
+                lines.append("**Verified Facts:**")
+                for f in company_analysis["facts"]:
+                    lines.append(f"- {f}")
+            if company_analysis.get("inferences"):
+                lines.append("**Inferences:**")
+                for inf in company_analysis["inferences"]:
+                    lines.append(f"- {inf}")
+            if company_analysis.get("hypotheses"):
+                lines.append("**Hypotheses:**")
+                for hyp in company_analysis["hypotheses"]:
+                    lines.append(f"- {hyp}")
+            lines.append("\n---\n")
+
+        lines.append("## 1. Executive Summary & Market Trends\n")
 
         trends = research.get("trends", [])
         if trends:

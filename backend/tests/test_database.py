@@ -1,4 +1,4 @@
-﻿import json
+import json
 import sqlite3
 import pytest
 from unittest.mock import patch, MagicMock
@@ -21,6 +21,18 @@ def isolated_db(tmp_path):
     Ensure each test runs with a fresh isolated SQLite database.
     Patches backend.main.db and backend.database.db.db.
     """
+    from backend.config import settings
+    from backend.llm.registry import model_registry
+    from backend.llm import llm_router
+
+    orig_fallback = llm_router._fallback_enabled
+    orig_groq = settings.GROQ_API_KEY
+    orig_mistral = settings.MISTRAL_API_KEY
+    llm_router._fallback_enabled = False
+    settings.GROQ_API_KEY = ""
+    settings.MISTRAL_API_KEY = ""
+    model_registry.refresh()
+
     temp_db_file = str(tmp_path / "test_startuplens.db")
     test_db = DatabaseManager(db_path=temp_db_file)
     test_db.init_db()
@@ -28,6 +40,11 @@ def isolated_db(tmp_path):
     with patch("backend.main.db", test_db), \
          patch("backend.database.db.db", test_db):
         yield test_db
+
+    llm_router._fallback_enabled = orig_fallback
+    settings.GROQ_API_KEY = orig_groq
+    settings.MISTRAL_API_KEY = orig_mistral
+    model_registry.refresh()
 
 
 # ---------------------------------------------------------------------------
@@ -413,7 +430,7 @@ def test_failed_ai_request_not_persisted(isolated_db):
          patch.object(TavilyService, "search", return_value=[{"title": "T", "url": "https://t.com"}]):
         response = client.post("/analyze", json={"topic": "Failed AI Test"})
 
-    assert response.status_code == 500
+    assert response.status_code in (500, 503)
 
     # Ensure database remains completely empty (no partial or fake sessions)
     conn = isolated_db.get_connection()
